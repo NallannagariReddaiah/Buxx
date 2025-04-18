@@ -1,4 +1,4 @@
-import Transaction from '../../models/transaction.model'
+import Transaction from '../../models/transaction.model.js'
 import Organization from '../../models/organization.model.js';
 import TaxAuthority from '../../models/taxAuthoritee.model.js';
 import {v2 as cloudinary} from 'cloudinary';

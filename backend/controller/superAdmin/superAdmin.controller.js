@@ -2,8 +2,8 @@
 import SuperAdmin from '../../models/superAdmin.model.js';
 import Organization from '../../models/organization.model.js';
 import Admin from '../../models/admin.model.js';
-import bcrypt from 'bcrypt';
-import TaxAuthority from '../../models/taxAuthority.model.js';
+import bcrypt from 'bcryptjs';
+import TaxAuthority from '../../models/taxAuthoritee.model.js'
 import {v2 as cloudinary} from 'cloudinary';
 import SystemNotification from '../../models/notification.model.js';
 export const resolveNotification = async (req, res) => {

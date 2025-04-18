@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken'
 
 import adminSchema from '../models/superAdmin.model.js'
-import whiteListSchema from '../models/whiteListSchema.js';
+import superAdminModel from '../models/superAdmin.model.js';
 
 const superadminProtectRoute = async (req,res,next) =>{
     try{
@@ -13,15 +13,11 @@ const superadminProtectRoute = async (req,res,next) =>{
         if(decoded.role!='SuperAdmin'){
             return res.status(401).json({ Unauthorized: "it is an unauthorized access" });
         }
-        const admin =await adminSchema.findById(decoded.userId);
-        if(!admin){
+        const SuperAdmin = await superAdminModel.findById(decoded._id);
+        if(!SuperAdmin){
             return res.status(401).json({ Unauthorized: "it is an unauthorized access" });
         }
-        const isSuperAdmin = await whiteListSchema.findOne({email:admin.email});
-        if(!isSuperAdmin){
-            return res.status(401).json({ Unauthorized: "it is an unauthorized access" });
-        }
-        req.user=admin;
+        req.user=SuperAdmin;
         next();
 
     }catch(err){

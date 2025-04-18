@@ -1,8 +1,8 @@
 import express  from 'express';
 
 import superAdminAuthRouter from './superAdminAuthRouter.js'
-import adminAuthRouter from './adminAuthRoutes.js'
-import taxAuthoriteeAuthRouter from './attendeeAuthRouter.js'
+import adminAuthRouter from './adminAuthRouter.js'
+import taxAuthoriteeAuthRouter from './taxAuthoriteeAuthRouter.js'
 
 const router = express.Router();
 

@@ -1,6 +1,6 @@
 import Admin from '../../models/admin.model.js';
 
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 import generateTokenAndSetCookie from '../../lib/utils/generateTokenAndSetcookie.js';
 

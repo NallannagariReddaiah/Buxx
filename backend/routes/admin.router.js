@@ -2,7 +2,7 @@ import express from 'express';
 
 import multer from 'multer';
 
-import adminProtectRoute from '../middleware/adminProtectRoute';
+import adminProtectRoute from '../middleware/adminProtectRoute.js';
 
 
 import {createDepartment , addEmployee , addTransaction ,  getAllDepartments ,getDepartmentById, searchEmployees,getEmployeeDetailsById, updateDepartment, deleteDepartment, deleteEmployee, getMe, updateProfile, updateProfileImage, createNotification, getNotificationsForRole, resolveNotification} from '../controller/admin/admin.controller.js';

@@ -1,6 +1,6 @@
 // models/SuperAdmin.js
 import mongoose from 'mongoose';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const superAdminSchema = new mongoose.Schema({
   name: {
