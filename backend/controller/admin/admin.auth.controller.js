@@ -7,7 +7,6 @@ import generateTokenAndSetCookie from '../../lib/utils/generateTokenAndSetcookie
 export const loginAdmin = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const admin = await Admin.findOne({ email });
     if (!admin) return res.status(404).json({ message: 'Admin not found' });
 
@@ -16,7 +15,6 @@ export const loginAdmin = async (req, res) => {
 
     generateTokenAndSetCookie(admin._id,"Admin",res);
     res.status(200).json({
-      token,
       admin: {
         id: admin._id,
         name: admin.name,
@@ -27,6 +25,7 @@ export const loginAdmin = async (req, res) => {
       }
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({ message: 'Login failed', error });
   }
 };

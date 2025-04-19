@@ -5,6 +5,11 @@ import Transaction from '../../models/transaction.model.js'
 import bcrypt from 'bcryptjs'
 import {v2 as cloudinary} from 'cloudinary';
 import SystemNotification from '../../models/notification.model.js';
+import Employee from '../../models/employee.model.js';
+import superAdmin from '../../models/superAdmin.model.js';
+import mongoose from 'mongoose';
+// import moment from 'moment';
+
 export const resolveNotification = async (req, res) => {
   try {
     const notificationId = req.params.id;
@@ -231,23 +236,33 @@ export const updateProfile = async (req, res) => {
 };
 export const createDepartment = async (req, res) => {
   try {
-    const { dpetname, budget, deptHead } = req.body;
-    const adminId = req.user._id; // from auth middleware
+    const { deptname, budget, deptHead } = req.body;
+    const userId = req.user._id;
 
-    
-    const organization = await Organization.findOne({ _id: req.user.organization });
+    let organizationId;
+    let createdBy;
 
-    if (!organization) {
-      return res.status(404).json({ message: 'Organization not found for this admin' });
+    // Try to fetch as Admin
+    const admin = await Admin.findById(userId);
+    if (admin) {
+      organizationId = admin.organization;
+      createdBy = userId;
+    } else {
+      // If not Admin, try fetching org by SuperAdmin
+      const org = await Organization.findOne({ superAdmin: userId });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for this user' });
+      }
+      organizationId = org._id;
+      createdBy = userId; // could be superAdmin in this case
     }
 
-    // Create department
     const newDepartment = new Department({
-      dpetname,
+      deptname,
       budget,
+      organization: organizationId,
+      createdBy,
       deptHead,
-      organization: organization._id,
-      createdBy: adminId,
     });
 
     await newDepartment.save();
@@ -262,37 +277,57 @@ export const createDepartment = async (req, res) => {
   }
 };
 export const addEmployee = async (req, res) => {
-    try {
-      const { empname, salary, phoneNumber, hireDate} = req.body;
-      const department=req.params;
-      const adminId = req.user._id; // from auth middleware
-  
-      // Validate department
-      const deptExists = await Department.findById(department);
-      if (!deptExists) {
-        return res.status(404).json({ message: 'Department not found' });
-      }
-  
-      // Create employee
-      const newEmployee = new Employee({
-        empname,
-        salary,
-        phoneNumber,
-        hireDate,
-        department,
-        addEmpBy: adminId,
-      });
-  
-      await newEmployee.save();
-  
-      res.status(201).json({
-        message: 'Employee added successfully',
-        employee: newEmployee,
-      });
-    } catch (error) {
-      console.error('Error adding employee:', error);
-      res.status(500).json({ message: 'Internal server error' });
+  try {
+    const { empname, salary, phoneNumber, hireDate,position } = req.body;
+    const { deptname } = req.params;
+
+    const userId = req.user._id;
+
+    let organization;
+
+    // Determine if the user is an Admin or SuperAdmin
+    const admin = await Admin.findById(userId);
+    if (admin) {
+      organization = await Organization.findById(admin.organization);
+    } else {
+      organization = await Organization.findOne({ superAdmin: userId });
     }
+
+    if (!organization) {
+      return res.status(403).json({ message: 'Unauthorized access. Organization not found.' });
+    }
+
+    // Find the department within the same organization
+    const department = await Department.findOne({
+      deptname,
+      organization: organization._id,
+    });
+
+    if (!department) {
+      return res.status(404).json({ message: 'Department not found in your organization' });
+    }
+
+    // Create the employee
+    const newEmployee = new Employee({
+      empname,
+      salary,
+      phoneNumber,
+      hireDate,
+      department: department._id,
+      addEmpBy: userId,
+      position
+    });
+
+    await newEmployee.save();
+
+    res.status(201).json({
+      message: 'Employee added successfully',
+      employee: newEmployee,
+    });
+  } catch (error) {
+    console.error('Error adding employee:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 };
 export const addTransaction = async (req, res) => {
     try {
@@ -309,14 +344,30 @@ export const addTransaction = async (req, res) => {
         to
       } = req.body;
   
-      const enteredBy = req.user._id; // From auth middleware (admin)
+      const enteredBy = req.user._id; // From auth middleware
+      const enteredByModel = req.user.role; // Expecting 'Admin' or 'SuperAdmin' set in middleware
+  
+      let organizationId;
+  
+      if (enteredByModel === "Admin") {
+        const admin = await Admin.findById(enteredBy);
+        if (!admin) return res.status(404).json({ message: "Admin not found" });
+        organizationId = admin.organization;
+      } else if (enteredByModel === "superAdmin") {
+        const superadmin = await superAdmin.findById(enteredBy);
+        if (!superadmin) return res.status(404).json({ message: "SuperAdmin not found" });
+        organizationId = superadmin.organization;
+      } else {
+        return res.status(403).json({ message: "Unauthorized role" });
+      }
   
       const transactionData = {
         type,
         transactionType,
         amount,
         description,
-        enteredBy
+        enteredBy,
+        enteredByModel
       };
   
       if (type === 'payroll') {
@@ -330,11 +381,15 @@ export const addTransaction = async (req, res) => {
         if (!emp || !dept) {
           return res.status(404).json({ message: 'Employee or Department not found' });
         }
-  
+        if(type==='payroll'){
+          dept.expenditure+=amount;
+          await dept.save();
+        }
         transactionData.employeeId = employeeId;
         transactionData.departmentId = departmentId;
         transactionData.salary = salary;
         transactionData.bonus = bonus;
+        transactionData.organization = organizationId;
       } else {
         // For non-payroll transactions, require from and to
         if (!from || !to) {
@@ -342,6 +397,7 @@ export const addTransaction = async (req, res) => {
         }
         transactionData.from = from;
         transactionData.to = to;
+        transactionData.organization = organizationId;
       }
   
       const transaction = new Transaction(transactionData);
@@ -355,25 +411,45 @@ export const addTransaction = async (req, res) => {
       console.error('Transaction creation failed:', error);
       res.status(500).json({ message: 'Internal server error' });
     }
-};
+};  
 export const getAllDepartments = async (req, res) => {
-    try {
-      const adminId = req.user._id; // req.user should be set by auth middleware
-  
-      // Fetch admin to get the organization
-      const admin = await Admin.findById(adminId);
-      if (!admin) {
-        return res.status(404).json({ message: 'Admin not found' });
+  try {
+    let organizationId;
+
+    const admin = await Admin.findById(req.user._id);
+    if (admin) {
+      organizationId = admin.organization;
+    } else {
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: "Associated organization not found" });
       }
-  
-      const departments = await Department.find({ organization: admin.organization })
-        .populate('deptHead', 'empname phoneNumber')
-        .populate('organization', 'name');
-  
-      res.status(200).json(departments);
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching departments', error });
+      organizationId = org._id;
     }
+
+    const departments = await Department.find({ organization: organizationId })
+      .populate("deptHead", "empname")
+      .populate("organization", "name");
+
+    const formattedDepartments = await Promise.all(
+      departments.map(async (dept) => {
+        const empCount = await Employee.countDocuments({ department: dept._id });
+        return {
+          id: dept._id.toString(),
+          name: dept.deptname,
+          head: dept.deptHead?.empname || "Not Assigned",
+          budget: dept.budget || 0,
+          expenditure: dept.expenditure || 0,
+          employees: empCount,
+        };
+      })
+    );
+
+    res.status(200).json(formattedDepartments);
+  } catch (error) {
+    console.error("Error fetching departments:", error);
+    res.status(500).json({ message: "Error fetching departments", error });
+  }
 };
 export const getDepartmentById = async (req, res) => {
     const { deptId } = req.params;
@@ -406,53 +482,40 @@ export const getDepartmentById = async (req, res) => {
     }
 };
 export const searchEmployees = async (req, res) => {
-    const { search } = req.body;
-    const adminId = req.user._id;
-  
-    try {
-      // Find admin's organization
-      const adminOrg = await Organization.findOne({ superAdmin: adminId });
-      if (!adminOrg) {
-        return res.status(404).json({ message: 'Organization not found for the admin' });
+  try {
+    let organizationId;
+
+    // Try as Admin
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      // Try as SuperAdmin
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for user' });
       }
-  
-      let employees = [];
-  
-      if (search) {
-        // Find departments that match search term (case-insensitive)
-        const matchingDepartments = await Department.find({
-          organization: adminOrg._id,
-          dpetname: { $regex: search, $options: 'i' }
-        }).select('_id');
-  
-        const departmentIds = matchingDepartments.map(dept => dept._id);
-  
-        // Find employees that match either department or name
-        employees = await Employee.find({
-          $and: [
-            { addEmpBy: adminId },
-            {
-              $or: [
-                { empname: { $regex: search, $options: 'i' } },
-                { department: { $in: departmentIds } }
-              ]
-            }
-          ]
-        })
-          .populate('department', 'dpetname')
-          .sort({ createdAt: -1 });
-      } else {
-        // Return all employees for the organization
-        employees = await Employee.find({ addEmpBy: adminId })
-          .populate('department', 'dpetname')
-          .sort({ createdAt: -1 });
-      }
-  
-      res.status(200).json(employees);
-    } catch (error) {
-      console.error('Error searching employees:', error);
-      res.status(500).json({ message: 'Internal server error', error });
+      organizationId = org._id;
     }
+
+    // Fetch employees belonging to this organization via their department
+    const employees = await Employee.find()
+      .populate({
+        path: 'department',
+        match: { organization: organizationId }, // filter departments by org
+        select: 'deptname organization'
+      })
+      .populate('addEmpBy', 'name') // Optionally populate addedBy admin name
+      .lean();
+
+    // Filter out employees whose department doesn't match organization (in case of mismatch)
+    const filteredEmployees = employees.filter(emp => emp.department !== null);
+
+    res.status(200).json(filteredEmployees);
+  } catch (error) {
+    console.error('Error searching employees:', error);
+    res.status(500).json({ message: 'Internal server error', error });
+  }
 };
 export const getEmployeeDetailsById = async (req, res) => {
     const { empId } = req.params;
@@ -513,50 +576,289 @@ export const updateDepartment = async (req, res) => {
     }
 };
 export const deleteDepartment = async (req, res) => {
-    const { deptId } = req.params;
-    const adminId = req.user._id;
-  
-    try {
-      const organization = await Organization.findOne({ superAdmin: adminId });
-      if (!organization) {
-        return res.status(403).json({ message: 'Unauthorized access' });
-      }
-  
-      const department = await Department.findOne({ _id: deptId, organization: organization._id });
-      if (!department) {
-        return res.status(404).json({ message: 'Department not found in your organization' });
-      }
-  
-      await Department.findByIdAndDelete(deptId);
-  
-      res.status(200).json({ message: 'Department deleted successfully' });
-    } catch (error) {
-      console.error('Error deleting department:', error);
-      res.status(500).json({ message: 'Failed to delete department', error });
+  const { deptId } = req.params;
+  const userId = req.user._id;
+
+  try {
+    let organization;
+
+    // Check if the user is an admin
+    const admin = await Admin.findById(userId);
+    if (admin) {
+      organization = await Organization.findById(admin.organization);
+    } else {
+      // If not admin, check if the user is a superAdmin
+      organization = await Organization.findOne({ superAdmin: userId });
     }
+
+    if (!organization) {
+      return res.status(403).json({ message: 'Unauthorized access. Organization not found.' });
+    }
+
+    // Ensure the department belongs to the user’s organization
+    const department = await Department.findOne({ _id: deptId, organization: organization._id });
+    if (!department) {
+      return res.status(404).json({ message: 'Department not found in your organization' });
+    }
+
+    // Delete all employees of the department
+    await Employee.deleteMany({ department: deptId });
+
+    // Delete the department
+    await Department.findByIdAndDelete(deptId);
+
+    res.status(200).json({ message: 'Department and related employees deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting department:', error);
+    res.status(500).json({ message: 'Failed to delete department', error });
+  }
 };
 export const deleteEmployee = async (req, res) => {
-    const { empId } = req.params;
-    const adminId = req.user._id;
-  
-    try {
-      const employee = await Employee.findById(empId).populate('department');
-      if (!employee) {
-        return res.status(404).json({ message: 'Employee not found' });
-      }
-  
-      const department = await Department.findById(employee.department._id);
-      const organization = await Organization.findOne({ _id: department.organization });
-  
-      if (!organization || !organization.superAdmin.equals(adminId)) {
-        return res.status(403).json({ message: 'Unauthorized to delete this employee' });
-      }
-  
-      await Employee.findByIdAndDelete(empId);
-  
-      res.status(200).json({ message: 'Employee deleted successfully' });
-    } catch (error) {
-      console.error('Error deleting employee:', error);
-      res.status(500).json({ message: 'Failed to delete employee', error });
+  const { empId } = req.params;
+  const userId = req.user._id;
+
+  try {
+    const employee = await Employee.findById(empId).populate('department');
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
     }
-};  
+
+    // Get the department and organization
+    const department = await Department.findById(employee.department._id);
+    const organization = await Organization.findById(department.organization);
+
+    if (!organization) {
+      return res.status(403).json({ message: 'Unauthorized access. Organization not found.' });
+    }
+
+    let isAuthorized = false;
+
+    // Check if the user is a superAdmin of this organization
+    if (organization.superAdmin.equals(userId)) {
+      isAuthorized = true;
+    }
+
+    // If not, check if the user is an admin of this organization
+    const admin = await Admin.findById(userId);
+    if (admin && admin.organization.equals(organization._id)) {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ message: 'Unauthorized to delete this employee' });
+    }
+
+    await Employee.findByIdAndDelete(empId);
+
+    res.status(200).json({ message: 'Employee deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting employee:', error);
+    res.status(500).json({ message: 'Failed to delete employee', error });
+  }
+};
+export const getAllTransactions = async (req, res) => {
+  try {
+    const transactions = await Transaction.find()
+      .populate('employeeId', 'empname')       
+      .populate('departmentId', 'deptname')
+      .sort({ createdAt: -1 });
+    const formatted = transactions.map((tx, index) => ({
+      id: index + 1,
+      date: tx.timestamp.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      type: tx.type,
+      transactionType: tx.transactionType,
+      description: tx.description,
+      from: tx.type === 'payroll' ? tx.employeeId.empname : tx.from,
+      to: tx.type === 'payroll' ? tx.departmentId.deptname : tx.to,
+      amount: tx.amount,
+    }));
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).json({ message: 'Server error fetching transactions' });
+  }
+};
+export const getTotalDepartments = async (req, res) => {
+  try {
+    let organizationId;
+
+    // Check if user is Admin
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      // Otherwise, assume user is SuperAdmin
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for user' });
+      }
+      organizationId = org._id;
+    }
+
+    const totalDepartments = await Department.countDocuments({ organization: organizationId });
+
+    res.status(200).json({ totalDepartments });
+  } catch (err) {
+    console.error('Error in getTotalDepartments:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getTotalEmployees = async (req, res) => {
+  try {
+    let organizationId;
+
+    // Check if user is Admin
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      // Otherwise, try as SuperAdmin
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for user' });
+      }
+      organizationId = org._id;
+    }
+
+    // Fetch employees and filter by department's organization
+    const employees = await Employee.find()
+      .populate({
+        path: 'department',
+        match: { organization: organizationId },
+        select: '_id organization'
+      })
+      .lean();
+
+    // Only count those whose department is in this organization
+    const totalEmployees = employees.filter(emp => emp.department !== null).length;
+
+    res.status(200).json({ totalEmployees });
+  } catch (error) {
+    console.error('Error getting total employees:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getDepartmentSpending = async (req, res) => {
+  try {
+    let organizationId;
+
+    // Get organization ID from Admin or SuperAdmin
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for user' });
+      }
+      organizationId = org._id;
+    }
+
+    // Date 6 months ago
+    const sixMonthsAgo = moment().subtract(6, 'months').startOf('month').toDate();
+
+    // Aggregation pipeline to get department spending
+    const spending = await Transaction.aggregate([
+      {
+        $match: {
+          type: 'payroll',
+          organization: new mongoose.Types.ObjectId(organizationId),
+          createdAt: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: '$departmentId',
+          totalSpending: { $sum: { $add: ['$salary', { $ifNull: ['$bonus', 0] }] } }
+        }
+      },
+      {
+        $lookup: {
+          from: 'departments',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'department'
+        }
+      },
+      {
+        $unwind: '$department'
+      },
+      {
+        $project: {
+          _id: 0,
+          department: '$department.deptname',
+          totalSpending: 1
+        }
+      }
+    ]);
+
+    res.status(200).json({ departmentSpending: spending });
+  } catch (error) {
+    console.error('Error getting department spending:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getMonthlyRevenue = async (req, res) => {
+  try {
+    let organizationId;
+
+    // Determine organization from Admin or SuperAdmin
+    // Try as Admin
+      const admin = await Admin.findById(req.user._id);
+      if (admin && admin.organization) {
+        organizationId = admin.organization;
+      } else {
+        // Fallback to SuperAdmin
+        const org = await Organization.findOne({ superAdmin: req.user._id });
+        if (!org) {
+          return res.status(404).json({ message: 'Organization not found for user' });
+        }
+        organizationId = org._id;
+      }
+
+
+    // Start of current year
+    const startOfYear = moment().startOf('year').toDate();
+    const endOfYear = moment().endOf('year').toDate();
+
+    const monthlyData = await Transaction.aggregate([
+      {
+        $match: {
+          organization: new mongoose.Types.ObjectId(organizationId),
+          createdAt: { $gte: startOfYear, $lte: endOfYear }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            month: { $month: '$createdAt' },
+            transactionType: '$transactionType'
+          },
+          totalAmount: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    // Initialize revenue object for all 12 months
+    const monthlyRevenue = Array.from({ length: 12 }, (_, i) => ({
+      name: moment().month(i).format('MMM'),
+      revenue: 0
+    }));
+
+    // Calculate net revenue: credit - debit
+    monthlyData.forEach(entry => {
+      const monthIndex = entry._id.month - 1;
+      const isCredit = entry._id.transactionType === 'credit';
+      if (isCredit) {
+        monthlyRevenue[monthIndex].revenue += entry.totalAmount;
+      } else {
+        monthlyRevenue[monthIndex].revenue -= entry.totalAmount;
+      }
+    });
+
+    res.status(200).json({ monthlyRevenueData: monthlyRevenue });
+  } catch (error) {
+    console.error('Error calculating monthly revenue:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};

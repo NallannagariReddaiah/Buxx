@@ -3,7 +3,7 @@ import express from 'express';
 import multer from 'multer';
 
 import  superAdminProtectRoute  from '../middleware/superAdminProtectRoute.js';
-import {createDepartment , addEmployee , addTransaction ,  getAllDepartments ,getDepartmentById, searchEmployees,getEmployeeDetailsById, updateDepartment, deleteDepartment, deleteEmployee} from '../controller/admin/admin.controller.js';
+import {createDepartment , addEmployee , addTransaction ,  getAllDepartments ,getDepartmentById, searchEmployees,getEmployeeDetailsById, updateDepartment, deleteDepartment, deleteEmployee, getAllTransactions} from '../controller/admin/admin.controller.js';
 import { createOrganization , addAdminBySuperAdmin, addTaxAuthorityBySuperAdmin,getMe,updateProfile,getAllAdmins,getAllTaxAuthorities,deleteAdminByEmail,deleteTaxAuthorityByEmail, updateProfileImage, createNotification, getNotificationsForRole, resolveNotification} from '../controller/superAdmin/superAdmin.controller.js';
 
 const router = express.Router();
@@ -19,8 +19,9 @@ router.get('/getMe',superAdminProtectRoute,getMe);
 router.put('/update-profile',superAdminProtectRoute,updateProfile);
 router.put('/update-profile-image',superAdminProtectRoute,upload.single('profileImg'),updateProfileImage);
 router.post('/create-dept', superAdminProtectRoute ,createDepartment);
-router.post('/add-employee', superAdminProtectRoute ,addEmployee);
+router.post('/add-employee/:deptname', superAdminProtectRoute ,addEmployee);
 router.post('/add-transaction', superAdminProtectRoute ,addTransaction);
+router.get('/get-transactions',superAdminProtectRoute,getAllTransactions);
 router.get('/get-departments', superAdminProtectRoute , getAllDepartments);
 router.get('/getDeptById/:deptId', superAdminProtectRoute ,getDepartmentById);
 router.get('/search-employees', superAdminProtectRoute ,searchEmployees);
@@ -30,12 +31,12 @@ router.delete('/delete-dept/:deptId', superAdminProtectRoute ,deleteDepartment);
 router.delete('/delete-emp/:empId', superAdminProtectRoute ,deleteEmployee);
 router.post('/create-organization',superAdminProtectRoute, createOrganization );
 router.post('/add-admin',superAdminProtectRoute,addAdminBySuperAdmin);
-router.post('/add-taxAuthoritee',superAdminProtectRoute,addTaxAuthorityBySuperAdmin);
+router.post('/add-taxAuthority',superAdminProtectRoute,addTaxAuthorityBySuperAdmin);
 router.get('/get-all-admins',superAdminProtectRoute,getAllAdmins);
 router.post('/add-taxAuthoritee',superAdminProtectRoute,addTaxAuthorityBySuperAdmin);
 router.get('/get-all-taxAuthoritees',superAdminProtectRoute,getAllTaxAuthorities );
-router.delete('/delete-admin',superAdminProtectRoute,deleteAdminByEmail);
-router.delete('/delete-taxAuthoritee',superAdminProtectRoute,deleteTaxAuthorityByEmail);
+router.delete('/delete-admin/:email',superAdminProtectRoute,deleteAdminByEmail);
+router.delete('/delete-taxAuthoritee/:email',superAdminProtectRoute,deleteTaxAuthorityByEmail);
 
 
 export default router;

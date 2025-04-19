@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const transactionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['payroll', 'maintenance', 'construction', 'tax', 'misc'],
+    enum: ['payroll', 'maintenance', 'construction', 'tax', 'misc','expense'],
     required: true
   },
   transactionType: {
@@ -25,10 +25,15 @@ const transactionSchema = new mongoose.Schema({
     default: Date.now
   },
   enteredBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Admin',
-    required: true
-  },
+  type: mongoose.Schema.Types.ObjectId,
+  required: true,
+  refPath: 'enteredByModel'
+},
+enteredByModel: {
+  type: String,
+  required: true,
+  enum: ['Admin', 'TaxAuthority','superAdmin']
+},
 
   // For general transactions
   from: {

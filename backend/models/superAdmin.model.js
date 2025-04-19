@@ -14,6 +14,10 @@ const superAdminSchema = new mongoose.Schema({
     unique: true,
     lowercase: true
   },
+  profileImg:{
+    type:String,
+    default:'',
+  },
   phoneNumber: {
     type: String,
     required: true

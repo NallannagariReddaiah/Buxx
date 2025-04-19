@@ -9,14 +9,11 @@ const adminProtectRoute = async (req,res,next) =>{
             return res.status(401).json({ error: "No token provided" });
         }
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if(decoded.role!='Admin'&&decoded.role!='SuperAdmin'){
+        if(decoded.role!='Admin'){
             return res.status(401).json({ Unauthorized: "it is an unauthorized access" });
         }
         const admin =await adminSchema.findById(decoded.userId);
         if(!admin){
-            return res.status(401).json({ Unauthorized: "it is an unauthorized access" });
-        }
-        if(admin.status!='approved'){
             return res.status(401).json({ Unauthorized: "it is an unauthorized access" });
         }
         req.user=admin;

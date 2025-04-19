@@ -29,7 +29,11 @@ const employeeSchema = new mongoose.Schema({
     type:mongoose.Schema.Types.ObjectId,
     ref:'Admin',
     required:true,
+  },
+  position:{
+    type:String,
+    default:"NA",
   }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Employee', employeeSchema);
+export default mongoose.model('Employee', employeeSchema);

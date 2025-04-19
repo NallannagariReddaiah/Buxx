@@ -24,4 +24,4 @@ router.get('/view-transactions-by-department/:deptId',taxAuthoriteeProtectRoute,
 router.get('/generate-tax-reports',taxAuthoriteeProtectRoute, generateTaxSummaryReport);
 router.post('/add-tax-transaction',taxAuthoriteeProtectRoute,addTaxTransaction)
 
-export default viewTransactionsByDepartmentName;
+export default router;

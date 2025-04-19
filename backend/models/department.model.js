@@ -19,7 +19,6 @@ const departmentSchema = new mongoose.Schema({
   deptHead: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Employee', 
-    required: true
   },
   organization: {
     type: mongoose.Schema.Types.ObjectId,

@@ -233,13 +233,13 @@ export const createOrganization = async (req, res) => {
     } = req.body;
 
     // Check if SuperAdmin exists
-    const superAdminId=req.user._id;
+    const superAdminId = req.user._id;
     const superAdmin = await SuperAdmin.findById(superAdminId);
     if (!superAdmin) {
       return res.status(404).json({ message: 'SuperAdmin not found' });
     }
 
-    // Create organization document
+    // Create organization
     const newOrg = new Organization({
       name,
       address,
@@ -250,8 +250,13 @@ export const createOrganization = async (req, res) => {
 
     await newOrg.save();
 
+    // Update Admin with organization ID (assumes admin is created by the superAdmin)
+    await Admin.findOneAndUpdate(
+      { organization: newOrg._id }
+    );
+
     res.status(201).json({
-      message: 'Organization created successfully',
+      message: 'Organization created successfully and linked to admin',
       organization: newOrg
     });
   } catch (error) {
@@ -285,14 +290,14 @@ export const addAdminBySuperAdmin = async (req, res) => {
     }
 
   
-    const hashedPassword = await bcrypt.hash(password, 10);
+
 
     
     const newAdmin = new Admin({
       name,
       email,
       phoneNumber,
-      password: hashedPassword,
+      password,
       organization: organization._id,
       role
     });
@@ -339,14 +344,13 @@ export const addTaxAuthorityBySuperAdmin = async (req, res) => {
       }
   
       // Hash the password
-      const hashedPassword = await bcrypt.hash(password, 10);
   
       // Create new Tax Authority
       const newTaxAuthority = new TaxAuthority({
         name,
         email,
         phoneNumber,
-        password: hashedPassword,
+        password,
         designation,
         organization: organization._id
       });

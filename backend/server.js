@@ -8,8 +8,8 @@ import connectMongoDb from './db/connectMongoDb.js';
 import authRouter from './routes/authRouter.js';
 import adminRouter from './routes/admin.router.js'
 import superAdminRouter from './routes/superAdmin.router.js'
-import taxAuthorityRouter from './routes/taxAuthoritee.router.js'
-import cors from 'cors'
+import taxAuthorityRouter from './routes/taxAuthoritee.router.js';
+import cors from 'cors';
 import dotenv from 'dotenv';
 
 dotenv.config({path:''});
@@ -28,7 +28,7 @@ app.listen(process.env.BACKED_SERVER_PORT,()=>{
 })
 
 app.use(cors({
-    origin: 'http://localhost:5173', 
+    origin: 'http://localhost:8080', 
     credentials: true,               
 }));
 
@@ -45,4 +45,4 @@ app.use(cookieParser());
 app.use('/api/auth',authRouter);
 app.use('/api/superAdmin',superAdminRouter );
 app.use('/api/admin',adminRouter)
-app.use('/api/tax-authoritee',taxAuthorityRouter);
+app.use('/api/tax-authority', taxAuthorityRouter);

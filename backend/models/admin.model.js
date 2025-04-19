@@ -14,6 +14,10 @@ const adminSchema = new mongoose.Schema({
     unique: true,
     lowercase: true
   },
+  profileImg:{
+    type:String,
+    default:'',
+  },
   phoneNumber: {
     type: String,
     required: true
@@ -25,7 +29,7 @@ const adminSchema = new mongoose.Schema({
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true
+    required: false,
   },
   role: {
     type: String,

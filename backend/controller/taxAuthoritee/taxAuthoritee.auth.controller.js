@@ -21,7 +21,6 @@ export const loginTaxAuthority = async (req, res) => {
 
     generateTokenAndSetCookie(taxAuthority._id,"taxAuthoritee",res);
     res.status(200).json({
-      token,
       taxAuthority: {
         id: taxAuthority._id,
         name: taxAuthority.name,
@@ -32,6 +31,7 @@ export const loginTaxAuthority = async (req, res) => {
       }
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({ message: 'Login failed', error });
   }
 };

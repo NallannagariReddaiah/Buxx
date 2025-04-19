@@ -244,7 +244,7 @@ export const viewAllTransactions = async (req, res) => {
   
       const organizationId = taxAuthority.organization;
   
-      const transactions = await Transaction.find()
+      const transactions = await Transaction.find({organization:organizationId})
         .populate({
           path: 'enteredBy',
           select: 'name email'
@@ -258,11 +258,7 @@ export const viewAllTransactions = async (req, res) => {
           select: 'deptname'
         });
   
-      const orgTransactions = transactions.filter(txn =>
-        txn.enteredBy && txn.enteredBy.organization?.toString() === organizationId.toString()
-      );
-  
-      res.status(200).json(orgTransactions);
+      res.status(200).json(transactions);
     } catch (error) {
       console.error('Error fetching transactions:', error);
       res.status(500).json({ message: "Error fetching transactions", error });
@@ -412,7 +408,7 @@ export const generateTaxSummaryReport = async (req, res) => {
     }
 };
 export const addTaxTransaction = async (req, res) => {
-    const { amount, description, departmentId } = req.body;
+    const { from,to,amount, description} = req.body;
   
     try {
       const taxAuthority = await TaxAuthority.findById(req.user._id);
@@ -422,10 +418,13 @@ export const addTaxTransaction = async (req, res) => {
   
       const newTransaction = new Transaction({
         type: 'tax',
+        transactionType:'debit',
         amount,
         description,
-        departmentId: departmentId || null,
-        enteredBy: req.user._id
+        enteredBy: req.user._id,
+        enteredByModel:"TaxAuthority",
+        from,
+        to
       });
   
       await newTransaction.save();
@@ -435,6 +434,7 @@ export const addTaxTransaction = async (req, res) => {
         transaction: newTransaction
       });
     } catch (error) {
+      console.log(error);
       res.status(500).json({
         message: 'Failed to record tax transaction',
         error: error.message
