@@ -179,14 +179,68 @@ export const updateProfileImage = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+export const updateCoverImage = async (req, res) => {
+  try {
+    if (!req.file) {
+
+      return res.status(400).json({ error: "No image uploaded" });
+    }
+
+    const currentSuperAdmin = await SuperAdmin.findById(req.user._id);
+    if (!currentSuperAdmin) {
+      return res.status(404).json({ error: "SuperAdmin not found" });
+    }
+    const organization = await Organization.findOne({superAdmin:req.user._id});
+    const currentImageUrl = organization.coverImg;
+    if (currentImageUrl) {
+      const publicId = currentImageUrl.split("/").pop().split(".")[0];
+
+      await cloudinary.uploader.destroy(`cover_images/${publicId}`);
+    }
+
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: "cover_images" },
+      async (error, result) => {
+        if (error) {
+          console.error("Cloudinary Upload Error:", error);
+          return res.status(500).json({ error: "Failed to upload image to Cloudinary" });
+        }
+
+        try {
+          const updatedOrganization = await Organization.findByIdAndUpdate(
+            organization._id,
+            {coverImg: result.secure_url },
+            { new: true }
+          );
+
+          res.json({ success: true, coverImg: updatedOrganization.coverImg });
+        } catch (err) {
+          console.error("Database Update Error:", err);
+          res.status(500).json({ error: "Failed to update profile image" });
+        }
+      }
+    );
+    streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+  } catch (err) {
+    console.error("Internal Server Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
 export const getMe = async (req, res) => {
   try {
-    const superAdmin = await SuperAdmin.findById(req.user.id).select('-password');
+    const superAdmin = await SuperAdmin.findById(req.user._id).select('-password');
     if (!superAdmin) {
       return res.status(404).json({ message: 'SuperAdmin not found' });
     }
-    res.json(superAdmin);
+
+    const organization = await Organization.findOne({ superAdmin: req.user._id }).select('coverImg');
+    
+    res.json({
+      ...superAdmin.toObject(),
+      coverImg: organization?.coverImg || null
+    });
   } catch (error) {
+    console.error('Error in getMe:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

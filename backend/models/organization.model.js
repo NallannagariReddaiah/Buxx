@@ -7,6 +7,10 @@ const organizationSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  coverImg:{
+    type:String,
+    default:'',
+  },
   address: {
     street: { type: String, required: true }, 
     city: { type: String, required: true },   

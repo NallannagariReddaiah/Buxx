@@ -18,6 +18,7 @@ router.put('/resolved-notification',superAdminProtectRoute,resolveNotification);
 router.get('/getMe',superAdminProtectRoute,getMe);
 router.put('/update-profile',superAdminProtectRoute,updateProfile);
 router.put('/update-profile-image',superAdminProtectRoute,upload.single('profileImg'),updateProfileImage);
+router.put('/update-cover-image',superAdminProtectRoute,upload.single('coverImg'),updateProfileImage);
 router.post('/create-dept', superAdminProtectRoute ,createDepartment);
 router.post('/add-employee/:deptname', superAdminProtectRoute ,addEmployee);
 router.post('/add-transaction', superAdminProtectRoute ,addTransaction);

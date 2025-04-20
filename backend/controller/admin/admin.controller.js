@@ -8,6 +8,7 @@ import SystemNotification from '../../models/notification.model.js';
 import Employee from '../../models/employee.model.js';
 import superAdmin from '../../models/superAdmin.model.js';
 import mongoose from 'mongoose';
+import moment from 'moment';
 // import moment from 'moment';
 
 export const resolveNotification = async (req, res) => {
@@ -754,15 +755,17 @@ export const getDepartmentSpending = async (req, res) => {
       organizationId = org._id;
     }
 
-    // Date 6 months ago
     const sixMonthsAgo = moment().subtract(6, 'months').startOf('month').toDate();
 
-    // Aggregation pipeline to get department spending
-    const spending = await Transaction.aggregate([
+    // Step 1: Get all departments in the org
+    const departments = await Department.find({ organization: organizationId }).lean();
+
+    // Step 2: Aggregate payroll transactions grouped by departmentId
+    const spendingData = await Transaction.aggregate([
       {
         $match: {
           type: 'payroll',
-          organization: new mongoose.Types.ObjectId(organizationId),
+          departmentId: { $ne: null },
           createdAt: { $gte: sixMonthsAgo }
         }
       },
@@ -771,28 +774,21 @@ export const getDepartmentSpending = async (req, res) => {
           _id: '$departmentId',
           totalSpending: { $sum: { $add: ['$salary', { $ifNull: ['$bonus', 0] }] } }
         }
-      },
-      {
-        $lookup: {
-          from: 'departments',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'department'
-        }
-      },
-      {
-        $unwind: '$department'
-      },
-      {
-        $project: {
-          _id: 0,
-          department: '$department.deptname',
-          totalSpending: 1
-        }
       }
     ]);
 
-    res.status(200).json({ departmentSpending: spending });
+    // Step 3: Map spending to departments, ensuring all are present
+    const spendingMap = new Map();
+    spendingData.forEach(entry => {
+      spendingMap.set(entry._id.toString(), entry.totalSpending);
+    });
+
+    const finalSpending = departments.map(dept => ({
+      department: dept.deptname,
+      totalSpending: spendingMap.get(dept._id.toString()) || 0
+    }));
+
+    res.status(200).json({ departmentSpending: finalSpending });
   } catch (error) {
     console.error('Error getting department spending:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -816,8 +812,6 @@ export const getMonthlyRevenue = async (req, res) => {
         organizationId = org._id;
       }
 
-
-    // Start of current year
     const startOfYear = moment().startOf('year').toDate();
     const endOfYear = moment().endOf('year').toDate();
 
@@ -859,6 +853,219 @@ export const getMonthlyRevenue = async (req, res) => {
     res.status(200).json({ monthlyRevenueData: monthlyRevenue });
   } catch (error) {
     console.error('Error calculating monthly revenue:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getMonthlyEarnings = async (req, res) => {
+  try {
+    let organizationId;
+
+    // Determine organization for Admin or SuperAdmin
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for user' });
+      }
+      organizationId = org._id;
+    }
+
+    // Set date range (last 6 months)
+    const startDate = moment().subtract(5, 'months').startOf('month').toDate();
+    const endDate = moment().endOf('month').toDate();
+
+    const earningsData = await Transaction.aggregate([
+      {
+        $match: {
+          organization: new mongoose.Types.ObjectId(organizationId),
+          transactionType: 'credit',
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: { $month: '$createdAt' },
+          totalEarnings: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    // Generate all 6 months with default value 0
+    const earningsByMonth = [];
+    for (let i = 0; i < 6; i++) {
+      const month = moment().subtract(5 - i, 'months');
+      const found = earningsData.find(e => e._id === month.month() + 1);
+      earningsByMonth.push({
+        name: month.format('MMM'),
+        earnings: found ? found.totalEarnings : 0
+      });
+    }
+
+    res.status(200).json({ monthlyEarnings: earningsByMonth });
+  } catch (error) {
+    console.error('Error getting monthly earnings:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getMonthlyRevenueAndExpenses = async (req, res) => {
+  try {
+    let organizationId;
+
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) return res.status(404).json({ message: 'Organization not found for user' });
+      organizationId = org._id;
+    }
+
+    const startDate = moment().subtract(5, 'months').startOf('month').toDate();
+    const endDate = moment().endOf('month').toDate();
+
+    const data = await Transaction.aggregate([
+      {
+        $match: {
+          organization: new mongoose.Types.ObjectId(organizationId),
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            month: { $month: '$createdAt' }
+          },
+          revenue: {
+            $sum: {
+              $cond: [{ $eq: ['$transactionType', 'credit'] }, '$amount', 0]
+            }
+          },
+          expenses: {
+            $sum: {
+              $cond: [{ $eq: ['$transactionType', 'debit'] }, '$amount', 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    // Format and pad missing months
+    const monthlyData = [];
+    for (let i = 0; i < 6; i++) {
+      const month = moment().subtract(5 - i, 'months');
+      const match = data.find(d => d._id.month === month.month() + 1);
+      monthlyData.push({
+        name: month.format('MMM'),
+        revenue: match ? match.revenue : 0,
+        expenses: match ? match.expenses : 0
+      });
+    }
+
+    res.status(200).json({ monthlyData });
+  } catch (error) {
+    console.error('Error in getMonthlyRevenueAndExpenses:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getWeeklyRevenue = async (req, res) => {
+  try {
+    let organizationId;
+
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) return res.status(404).json({ message: 'Organization not found for user' });
+      organizationId = org._id;
+    }
+
+    const startDate = moment().subtract(6, 'days').startOf('day').toDate();
+    const endDate = moment().endOf('day').toDate();
+
+    const data = await Transaction.aggregate([
+      {
+        $match: {
+          organization: new mongoose.Types.ObjectId(organizationId),
+          transactionType: 'credit',
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: { $dayOfWeek: '$createdAt' },
+          revenue: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const weeklyData = [];
+
+    for (let i = 0; i < 7; i++) {
+      const targetDate = moment().subtract(6 - i, 'days');
+      const dayOfWeek = targetDate.isoWeekday(); // 1 (Mon) to 7 (Sun)
+      const mongoDay = dayOfWeek % 7 + 1; // Convert to MongoDB $dayOfWeek (Sun=1)
+      const match = data.find(d => d._id === mongoDay);
+
+      weeklyData.push({
+        name: targetDate.format('ddd'),
+        revenue: match ? match.revenue : 0
+      });
+    }
+
+    res.status(200).json({ weeklyData });
+  } catch (error) {
+    console.error('Error in getWeeklyRevenue:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+export const getMonthlySpendAndSales = async (req, res) => {
+  try {
+    let organizationId;
+
+    // Get organizationId from Admin or SuperAdmin
+    const admin = await Admin.findById(req.user._id);
+    if (admin && admin.organization) {
+      organizationId = admin.organization;
+    } else {
+      const org = await Organization.findOne({ superAdmin: req.user._id });
+      if (!org) {
+        return res.status(404).json({ message: 'Organization not found for user' });
+      }
+      organizationId = org._id;
+    }
+
+    // Get start and end of current month
+    const startOfMonth = moment().startOf('month').toDate();
+    const endOfMonth = moment().endOf('month').toDate();
+
+    // Fetch all transactions for the org within this month
+    const transactions = await Transaction.find({
+      organization: new mongoose.Types.ObjectId(organizationId),
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+    });
+
+    let totalSpending = 0;
+    let totalSales = 0;
+
+    transactions.forEach(txn => {
+      if (txn.transactionType === 'debit') {
+        totalSpending += txn.amount;
+      } else if (txn.transactionType === 'credit') {
+        totalSales += txn.amount;
+      }
+    });
+
+    res.status(200).json({
+      spendingThisMonth: totalSpending,
+      salesThisMonth: totalSales
+    });
+
+  } catch (error) {
+    console.error('Error in getMonthlySpendAndSales:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
