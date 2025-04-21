@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const transactionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['payroll', 'maintenance', 'construction', 'tax', 'misc','expense'],
+    enum: ['payroll', 'maintenance', 'construction', 'tax', 'misc','expense','income'],
     required: true
   },
   transactionType: {
