@@ -19,7 +19,7 @@ export const loginTaxAuthority = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    generateTokenAndSetCookie(taxAuthority._id,"taxAuthoritee",res);
+    generateTokenAndSetCookie(taxAuthority._id,"taxAuthority",res);
     res.status(200).json({
       taxAuthority: {
         id: taxAuthority._id,

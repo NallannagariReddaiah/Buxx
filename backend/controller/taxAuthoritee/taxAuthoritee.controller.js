@@ -3,6 +3,8 @@ import Organization from '../../models/organization.model.js';
 import TaxAuthority from '../../models/taxAuthoritee.model.js';
 import {v2 as cloudinary} from 'cloudinary';
 import SystemNotification from '../../models/notification.model.js';
+import Department from '../../models/department.model.js';
+import Employee from '../../models/employee.model.js';
 export const resolveNotification = async (req, res) => {
   try {
     const notificationId = req.params.id;
@@ -234,35 +236,27 @@ export const updateProfile = async (req, res) => {
   }
 };
 export const viewAllTransactions = async (req, res) => {
-    try {
-      const taxAuthorityId = req.user._id; 
-      const taxAuthority = await TaxAuthority.findById(taxAuthorityId);
-  
-      if (!taxAuthority) {
-        return res.status(404).json({ message: "TaxAuthority not found" });
-      }
-  
-      const organizationId = taxAuthority.organization;
-  
-      const transactions = await Transaction.find({organization:organizationId})
-        .populate({
-          path: 'enteredBy',
-          select: 'name email'
-        })
-        .populate({
-          path: 'employeeId',
-          select: 'empname phoneNumber'
-        })
-        .populate({
-          path: 'departmentId',
-          select: 'deptname'
-        });
-  
-      res.status(200).json(transactions);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      res.status(500).json({ message: "Error fetching transactions", error });
-    }
+  try {
+    const transactions = await Transaction.find()
+      .populate('employeeId', 'empname')       
+      .populate('departmentId', 'deptname')
+      .sort({ createdAt: -1 });
+    const formatted = transactions.map((tx, index) => ({
+      id: index + 1,
+      date: tx.timestamp.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      type: tx.type,
+      transactionType: tx.transactionType,
+      description: tx.description,
+      from: tx.type === 'payroll' ? tx.employeeId.empname : tx.from,
+      to: tx.type === 'payroll' ? tx.departmentId.deptname : tx.to,
+      amount: tx.amount,
+      department:tx.type=== 'payroll' ? tx.departmentId.deptname : tx.to
+    }));
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).json({ message: 'Server error fetching transactions' });
+  }
 };
 export const viewTransactionsByType = async (req, res) => {
     const { type } = req.body; // e.g., payroll, tax, etc.
@@ -440,5 +434,35 @@ export const addTaxTransaction = async (req, res) => {
         error: error.message
       });
     }
+};
+export const getAllDepartments = async (req, res) => {
+  try {
+    let organizationId;
+
+    const taxAuth = await TaxAuthority.findById(req.user._id);
+    organizationId = taxAuth. organization;
+
+    const departments = await Department.find({ organization: organizationId })
+      .populate("deptHead", "empname")
+      .populate("organization", "name");
+
+    const formattedDepartments = await Promise.all(
+      departments.map(async (dept) => {
+        const empCount = await Employee.countDocuments({ department: dept._id });
+        return {
+          id: dept._id.toString(),
+          name: dept.deptname,
+          head: dept.deptHead?.empname || "Not Assigned",
+          budget: dept.budget || 0,
+          expenditure: dept.expenditure || 0,
+          employees: empCount,
+        };
+      })
+    );
+    res.status(200).json(formattedDepartments);
+  } catch (error) {
+    console.error("Error fetching departments:", error);
+    res.status(500).json({ message: "Error fetching departments", error });
+  }
 };
   

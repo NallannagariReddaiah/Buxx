@@ -8,7 +8,7 @@ const protectRoute = async (req, res, next) => {
             return res.status(401).json({ error: "No token provided" });
         }
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if(decoded.role!='taxAuthoritee'){
+        if(decoded.role!='taxAuthority'){
             return res.status(401).json({unauthorized: `You are not authorized to access taxAuthoritee`})
         }
         const user = await taxAuthoritee.findById(decoded.userId).select('-password');
